@@ -242,6 +242,9 @@ class LabelingWidget(LabelDialog):
         self.fn_to_index = {}
         self.cache_auto_label = None
         self.cache_auto_label_group_id = None
+        self._display_image_mode = "rgb"
+        self._rgb_image_path = None
+        self._thermal_image_path = None
 
         # see configs/anylabeling_config.yaml for valid configuration
         if config is None:
@@ -716,6 +719,15 @@ class LabelingWidget(LabelDialog):
             shortcuts["open_prev_unchecked"],
             "prev",
             self.tr("Open previous unchecked image"),
+            enabled=False,
+        )
+        toggle_rgbt_background = action(
+            self.tr("Toggle RGB/Thermal"),
+            self.toggle_rgbt_background,
+            shortcuts.get("toggle_rgbt_background", "V"),
+            "compare",
+            self.tr("Toggle background between RGB and thermal image"),
+            checkable=True,
             enabled=False,
         )
         save = action(
@@ -2097,6 +2109,7 @@ class LabelingWidget(LabelDialog):
             open_prev_image=open_prev_image,
             open_next_unchecked_image=open_next_unchecked_image,
             open_prev_unchecked_image=open_prev_unchecked_image,
+            toggle_rgbt_background=toggle_rgbt_background,
             open_chatbot=open_chatbot,
             open_vqa=open_vqa,
             open_pointcloud=open_pointcloud,
@@ -2207,6 +2220,7 @@ class LabelingWidget(LabelDialog):
                 loop_thru_labels,
                 loop_select_labels,
                 select_toggle_shapes,
+                toggle_rgbt_background,
             ),
             on_shapes_present=(save_as, delete),
             hide_selected_polygons=hide_selected_polygons,
@@ -2265,6 +2279,7 @@ class LabelingWidget(LabelDialog):
                 opendir,
                 openvideo,
                 toggle_compare_view,
+                toggle_rgbt_background,
                 self.menus.recent_files,
                 save,
                 save_as,
@@ -2405,6 +2420,7 @@ class LabelingWidget(LabelDialog):
                 fit_window,
                 fit_width,
                 None,
+                toggle_rgbt_background,
                 show_masks,
                 show_texts,
                 show_labels,
@@ -2481,6 +2497,7 @@ class LabelingWidget(LabelDialog):
             select_toggle_shapes,
             fit_window,
             fit_width,
+            toggle_rgbt_background,
             None,
             toggle_auto_labeling_widget,
             run_all_images,
@@ -3706,6 +3723,136 @@ class LabelingWidget(LabelDialog):
             if shape is not None and not shape.visible:
                 return False
         return True
+
+    def _replace_dir_token(self, image_path, src_token, dst_token):
+        normalized = osp.normpath(image_path)
+        parts = normalized.split(os.sep)
+        if src_token not in parts:
+            return None
+        idx = len(parts) - 1 - parts[::-1].index(src_token)
+        parts[idx] = dst_token
+        return os.sep.join(parts)
+
+    def _replace_filename_suffix(self, image_path, src_suffix, dst_suffix):
+        directory, filename = osp.split(image_path)
+        stem, ext = osp.splitext(filename)
+        if not stem.endswith(src_suffix):
+            return None
+        mapped_stem = stem[: -len(src_suffix)] + dst_suffix
+        return osp.join(directory, mapped_stem + ext)
+
+    def _set_modal_pair_paths(self, image_path):
+        self._rgb_image_path = image_path
+        self._thermal_image_path = None
+
+        if not image_path:
+            return
+
+        thermal_candidate = self._replace_dir_token(
+            image_path, "images", "images_ir"
+        )
+        if thermal_candidate and osp.exists(thermal_candidate):
+            self._rgb_image_path = image_path
+            self._thermal_image_path = thermal_candidate
+            return
+
+        thermal_suffix_candidate = None
+        if thermal_candidate:
+            thermal_suffix_candidate = self._replace_filename_suffix(
+                thermal_candidate, "_rgb", "_ir"
+            )
+        if thermal_suffix_candidate and osp.exists(thermal_suffix_candidate):
+            self._rgb_image_path = image_path
+            self._thermal_image_path = thermal_suffix_candidate
+            return
+
+        rgb_candidate = self._replace_dir_token(
+            image_path, "images_ir", "images"
+        )
+        if rgb_candidate and osp.exists(rgb_candidate):
+            self._rgb_image_path = rgb_candidate
+            self._thermal_image_path = image_path
+            return
+
+        rgb_suffix_candidate = None
+        if rgb_candidate:
+            rgb_suffix_candidate = self._replace_filename_suffix(
+                rgb_candidate, "_ir", "_rgb"
+            )
+        if rgb_suffix_candidate and osp.exists(rgb_suffix_candidate):
+            self._rgb_image_path = rgb_suffix_candidate
+            self._thermal_image_path = image_path
+
+    def _sync_rgbt_action_state(self):
+        action = getattr(self.actions, "toggle_rgbt_background", None)
+        if action is None:
+            return
+        has_pair = bool(self._thermal_image_path and osp.exists(self._thermal_image_path))
+        action.setEnabled(has_pair)
+        with QtCore.QSignalBlocker(action):
+            action.setChecked(self._display_image_mode == "thermal")
+        if has_pair:
+            action.setToolTip(
+                self.tr(
+                    "Toggle background between RGB and thermal image (current: %s)"
+                )
+                % self._display_image_mode
+            )
+
+    def _swap_background_image(self, image_path):
+        image_data = LabelFile.load_image_file(image_path)
+        if not image_data:
+            return False
+        image = utils.img_data_to_qimage(image_data, image_path)
+        if image.isNull():
+            return False
+        if self.image is not None and image.size() != self.image.size():
+            self.status(self.tr("RGB/thermal views must have matching dimensions."))
+            return False
+        # This changes the view only. Saving must retain the original image bytes.
+        self.image = image
+        self.canvas.load_pixmap(
+            QtGui.QPixmap.fromImage(image), clear_shapes=False
+        )
+        if (
+            hasattr(self, "navigator_dialog")
+            and self.navigator_dialog.isVisible()
+        ):
+            self.navigator_dialog.set_image(QtGui.QPixmap.fromImage(image))
+            self.update_navigator_shapes()
+        self.update_thumbnail_display()
+        self.paint_canvas()
+        return True
+
+    def toggle_rgbt_background(self, checked):
+        if not self.filename:
+            return
+
+        target_mode = "thermal" if checked else "rgb"
+        target_path = (
+            self._thermal_image_path if target_mode == "thermal" else self._rgb_image_path
+        )
+
+        action = getattr(self.actions, "toggle_rgbt_background", None)
+        if not target_path or not osp.exists(target_path):
+            if action is not None:
+                with QtCore.QSignalBlocker(action):
+                    action.setChecked(False)
+            self.status(
+                self.tr("Thermal pair not found for current image.")
+            )
+            return
+
+        if not self._swap_background_image(target_path):
+            if action is not None:
+                with QtCore.QSignalBlocker(action):
+                    action.setChecked(self._display_image_mode == "thermal")
+            self.status(self.tr("Failed to load %s image.") % target_mode)
+            return
+
+        self._display_image_mode = target_mode
+        self._sync_rgbt_action_state()
+        self.status(self.tr("Switched to %s view") % target_mode)
 
     def _set_all_objects_visibility(self, visible):
         """Set all Objects panel checkboxes and shape visibility to visible (True/False)."""
@@ -6919,6 +7066,16 @@ class LabelingWidget(LabelDialog):
         self.image_tags_widget.set_interactions_enabled(True)
         if has_image_tags:
             self._auto_show_image_tags()
+        self._set_modal_pair_paths(filename)
+        if (
+            self._thermal_image_path
+            and osp.normpath(filename)
+            == osp.normpath(self._thermal_image_path)
+        ):
+            self._display_image_mode = "thermal"
+        else:
+            self._display_image_mode = "rgb"
+        self._sync_rgbt_action_state()
 
         if (
             hasattr(self, "navigator_dialog")

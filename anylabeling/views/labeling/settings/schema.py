@@ -1479,6 +1479,7 @@ def _shortcut_category_map() -> dict[str, tuple[str, ...]]:
             "toggle_auto_use_last_gid",
             "toggle_auto_use_last_label",
             "toggle_compare_view",
+            "toggle_rgbt_background",
             "toggle_keep_prev_mode",
             "toggle_visibility_shapes",
             "zoom_in",

@@ -213,6 +213,7 @@ shortcuts:
   toggle_auto_use_last_gid: Ctrl+Shift+G
   toggle_visibility_shapes: Ctrl+H
   toggle_compare_view: Ctrl+Alt+C
+  toggle_rgbt_background: V
 
   auto_label: Ctrl+A
   auto_run: Ctrl+B
