@@ -1,0 +1,10 @@
+{
+  "data_root": "data",
+  "output_root": "review_output",
+  "raw_predictions": "data/raw_predictions",
+  "sam3_repo": "external/sam3",
+  "sam3_checkpoint": "weights/sam3.pt",
+  "deim_repo": "external/DEIMv2",
+  "deim_config": "external/DEIMv2/configs/deimv2/person.yml",
+  "deim_checkpoint": "weights/deim_person.pth"
+}

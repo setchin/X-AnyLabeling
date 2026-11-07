@@ -197,3 +197,9 @@ If you use this software in your research, please cite it as below:
 ```
 
 <div align="center"><a href="#top">🔝 Back to Top</a></div>
+
+## ForestSAR instance review in this fork
+
+See [setup and usage](annotation_workbench/README.md) for linked-instance review,
+DEIMv2/SAM3 proposals, confidence and continuity filtering, reversible deletion,
+and RGB/thermal view switching.

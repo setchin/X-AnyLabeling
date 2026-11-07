@@ -145,6 +145,7 @@ gpu-cu13 = [
 
 [project.scripts]
 xanylabeling = "anylabeling.app:main"
+xanylabeling-review = "annotation_workbench.xanylabeling_addon:main"
 
 [tool.uv]
 conflicts = [
@@ -176,7 +177,7 @@ conflicts = [
 
 # Tools settings -------------------------------------------------------------------------------------------------------
 [tool.setuptools]  # configuration specific to the `setuptools` build backend.
-packages = { find = { where = ["."], include = ["anylabeling*"], exclude = ["resources*"] } }
+packages = { find = { where = ["."], include = ["anylabeling*", "annotation_workbench*"], exclude = ["resources*"] } }
 
 [tool.setuptools.dynamic]
 version = {attr = "anylabeling.app_info.__version__"}

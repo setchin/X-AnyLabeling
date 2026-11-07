@@ -182,3 +182,7 @@ pnnx*
 
 # calibration image
 calibration_*.npy
+
+# Local ForestSAR integration settings and generated review data
+forest_sar.local.json
+review_output/
